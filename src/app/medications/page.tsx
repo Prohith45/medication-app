@@ -29,6 +29,8 @@ import {
   type MedicationFormData,
   type DoseAlert,
   type AdherenceRecord,
+  calculateEndDate,
+  getCourseProgress,
 } from "./types";
 
 const MEDICATIONS_STORAGE_KEY = "medassist_medications_list";
@@ -46,6 +48,9 @@ const DEFAULT_SAMPLE_MEDICATIONS: Medication[] = [
     times: ["08:00"],
     timingCondition: "Morning (Breakfast)",
     createdAt: new Date().toISOString(),
+    durationDays: 5,
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: calculateEndDate(new Date().toISOString().split("T")[0], 5),
   },
   {
     id: "med_metformin",
@@ -56,6 +61,8 @@ const DEFAULT_SAMPLE_MEDICATIONS: Medication[] = [
     times: ["13:00"],
     timingCondition: "Afternoon (Lunch)",
     createdAt: new Date().toISOString(),
+    durationDays: "ongoing",
+    startDate: new Date().toISOString().split("T")[0],
   },
   {
     id: "med_folitrax",
@@ -66,6 +73,9 @@ const DEFAULT_SAMPLE_MEDICATIONS: Medication[] = [
     times: ["18:00"],
     timingCondition: "Evening (Snacks)",
     createdAt: new Date().toISOString(),
+    durationDays: 30,
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: calculateEndDate(new Date().toISOString().split("T")[0], 30),
   },
   {
     id: "med_atorvastatin",
@@ -76,6 +86,8 @@ const DEFAULT_SAMPLE_MEDICATIONS: Medication[] = [
     times: ["21:15"],
     timingCondition: "Night (Bedtime)",
     createdAt: new Date().toISOString(),
+    durationDays: "ongoing",
+    startDate: new Date().toISOString().split("T")[0],
   },
 ];
 
@@ -326,6 +338,7 @@ function MedicationsDashboard() {
       // Auto-escalate to Telegram if 2+ doses skipped
       if (newMissedCount >= 2 && !autoAlertSent) {
         setAutoAlertSent(true);
+        const course = getCourseProgress(med);
         fetch("/api/telegram-alert", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -333,7 +346,7 @@ function MedicationsDashboard() {
             patientName: userProfile.patientName,
             guardianName: userProfile.guardianName,
             guardianRelation: userProfile.guardianRelation,
-            message: `⚠️ AUTO-ALERT: ${userProfile.patientName} has skipped ${newMissedCount} doses today. Last skipped: ${med.name} (${scheduledTime}). Immediate attention required.`,
+            message: `⚠️ AUTO-ALERT: ${userProfile.patientName} has skipped ${newMissedCount} doses today. Last skipped: ${med.name} (${scheduledTime}, Course: ${course.badgeText}). Immediate attention required.`,
           }),
         }).catch((err) => console.warn("Auto-escalation failed:", err));
       }

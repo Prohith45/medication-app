@@ -23,9 +23,109 @@ export interface Medication {
   timingCondition?: string; // e.g. "Morning (Breakfast)", "Take after food"
   initialStatus?: "due" | "pending";
   createdAt: string; // ISO date string
+  durationDays?: number | "ongoing"; // e.g., 5, 7, 14, or "ongoing"
+  startDate?: string;                // "YYYY-MM-DD"
+  endDate?: string;                 // calculated "YYYY-MM-DD" for fixed courses
 }
 
 export type MedicationFormData = Omit<Medication, "id" | "createdAt">;
+
+export function calculateEndDate(
+  startDate: string,
+  durationDays: number | "ongoing"
+): string | undefined {
+  if (durationDays === "ongoing") return undefined;
+  if (!startDate || typeof durationDays !== "number" || durationDays <= 0) return undefined;
+  const d = new Date(startDate + "T00:00:00");
+  d.setDate(d.getDate() + durationDays - 1);
+  return d.toISOString().split("T")[0];
+}
+
+export interface CourseProgress {
+  isOngoing: boolean;
+  isCompleted: boolean;
+  isActive: boolean;
+  isFuture: boolean;
+  currentDay: number;
+  totalDays: number;
+  remainingDays: number;
+  label: string;
+  badgeText: string;
+}
+
+export function getCourseProgress(med: {
+  startDate?: string;
+  endDate?: string;
+  durationDays?: number | "ongoing";
+}): CourseProgress {
+  const duration = med.durationDays ?? "ongoing";
+  if (duration === "ongoing") {
+    return {
+      isOngoing: true,
+      isCompleted: false,
+      isActive: true,
+      isFuture: false,
+      currentDay: 1,
+      totalDays: 0,
+      remainingDays: 0,
+      label: "Ongoing (Chronic Maintenance)",
+      badgeText: "Ongoing",
+    };
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+  const start = med.startDate || today;
+  const total = typeof duration === "number" ? duration : parseInt(String(duration), 10) || 7;
+  const end = med.endDate || calculateEndDate(start, total) || today;
+
+  const startDateObj = new Date(start + "T00:00:00");
+  const todayDateObj = new Date(today + "T00:00:00");
+
+  const diffMs = todayDateObj.getTime() - startDateObj.getTime();
+  const dayIndex = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1; // 1-indexed
+
+  if (dayIndex < 1) {
+    const daysUntilStart = 1 - dayIndex;
+    return {
+      isOngoing: false,
+      isCompleted: false,
+      isActive: false,
+      isFuture: true,
+      currentDay: 0,
+      totalDays: total,
+      remainingDays: total,
+      label: `Starts in ${daysUntilStart} ${daysUntilStart === 1 ? "day" : "days"} (${start})`,
+      badgeText: `Starts in ${daysUntilStart}d`,
+    };
+  }
+
+  if (dayIndex > total) {
+    return {
+      isOngoing: false,
+      isCompleted: true,
+      isActive: false,
+      isFuture: false,
+      currentDay: total,
+      totalDays: total,
+      remainingDays: 0,
+      label: `Course completed (${total} days)`,
+      badgeText: "Completed",
+    };
+  }
+
+  const remaining = total - dayIndex;
+  return {
+    isOngoing: false,
+    isCompleted: false,
+    isActive: true,
+    isFuture: false,
+    currentDay: dayIndex,
+    totalDays: total,
+    remainingDays: remaining,
+    label: `Day ${dayIndex} of ${total} (${remaining} ${remaining === 1 ? "day" : "days"} left)`,
+    badgeText: `Day ${dayIndex} of ${total}`,
+  };
+}
 
 export interface DayMatrixEntry {
   dayNumber: number;

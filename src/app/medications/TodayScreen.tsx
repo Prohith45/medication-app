@@ -9,6 +9,7 @@ import {
   type DetectedInteraction,
   formatTime12h,
   getTimeSlotBadgeLabel,
+  getCourseProgress,
 } from "./types";
 import { type UserProfile } from "./types/profile";
 import DayLogModal, { type DayLogModalItem } from "./DayLogModal";
@@ -149,6 +150,10 @@ export default function TodayScreen({
     return withAlert || upcoming[0] || null;
   }, [allDoseEntries]);
 
+  const dueCourse = useMemo(() => {
+    return dueNowItem ? getCourseProgress(dueNowItem.med) : null;
+  }, [dueNowItem]);
+
   // Remaining doses
   const remainingDoseEntries = useMemo(() => {
     if (!dueNowItem) return allDoseEntries;
@@ -288,12 +293,28 @@ export default function TodayScreen({
             >
               {/* Badge & Explainer Link */}
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200/80 px-3 py-1 rounded-full text-xs sm:text-sm font-semibold">
-                  <span className="material-symbols-outlined text-[16px] text-amber-600">
-                    schedule
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200/80 px-3 py-1 rounded-full text-xs sm:text-sm font-semibold">
+                    <span className="material-symbols-outlined text-[16px] text-amber-600">
+                      schedule
+                    </span>
+                    <span>{t.dueNow || "Due Now"} • {dueNowItem.timeSlotBadge}</span>
                   </span>
-                  <span>{t.dueNow || "Due Now"} • {dueNowItem.timeSlotBadge}</span>
-                </span>
+
+                  {dueCourse && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs sm:text-sm font-semibold border ${
+                        dueCourse.isOngoing
+                          ? "bg-slate-100 text-slate-700 border-slate-200"
+                          : dueCourse.isCompleted
+                          ? "bg-amber-50 text-amber-800 border-amber-200"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                      }`}
+                    >
+                      <span>{dueCourse.isOngoing ? "🔄 Ongoing" : `📅 ${dueCourse.badgeText}`}</span>
+                    </span>
+                  )}
+                </div>
 
                 {onOpenDrugInfo && (
                   <button
@@ -417,6 +438,7 @@ export default function TodayScreen({
                 {remainingDoseEntries.map((entry, idx) => {
                   const isTaken = entry.status === "taken";
                   const isSkipped = entry.status === "skipped";
+                  const entryCourse = getCourseProgress(entry.med);
 
                   if (isTaken) {
                     return (
@@ -438,7 +460,7 @@ export default function TodayScreen({
                               {entry.med.name} · {entry.med.dose}
                             </p>
                             <p className="text-xs sm:text-sm text-slate-400 font-medium">
-                              {entry.timeSlotBadge} • {t.taken || "Taken"}
+                              {entry.timeSlotBadge} • {entryCourse.isOngoing ? "Ongoing" : entryCourse.badgeText} • {t.taken || "Taken"}
                             </p>
                           </div>
                         </div>
@@ -475,7 +497,7 @@ export default function TodayScreen({
                               {entry.med.name} · {entry.med.dose}
                             </p>
                             <p className="text-xs sm:text-sm text-amber-700/80 font-medium">
-                              {entry.timeSlotBadge} • {t.skipped || "Skipped by patient"}
+                              {entry.timeSlotBadge} • {entryCourse.isOngoing ? "Ongoing" : entryCourse.badgeText} • {t.skipped || "Skipped by patient"}
                             </p>
                           </div>
                         </div>
@@ -511,9 +533,20 @@ export default function TodayScreen({
                       className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                     >
                       <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
                             ⏰ {entry.timeSlotBadge}
+                          </span>
+                          <span
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${
+                              entryCourse.isOngoing
+                                ? "bg-slate-50 text-slate-600 border-slate-200"
+                                : entryCourse.isCompleted
+                                ? "bg-amber-50 text-amber-800 border-amber-200"
+                                : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            }`}
+                          >
+                            {entryCourse.isOngoing ? "🔄 Ongoing" : `📅 ${entryCourse.badgeText}`}
                           </span>
                           {onOpenDrugInfo && (
                             <button

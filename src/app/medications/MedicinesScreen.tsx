@@ -10,6 +10,8 @@ import {
   type DosingPattern,
   COMMON_MEDICATIONS,
   formatTime12h,
+  calculateEndDate,
+  getCourseProgress,
 } from "./types";
 import { INDIAN_DRUG_DETAILS, resolveIndianBrand } from "./data/indianMedicines";
 import SpeakerButton from "./SpeakerButton";
@@ -22,6 +24,15 @@ interface MedicinesScreenProps {
   onDeleteMedication: (id: string) => void;
   onOpenDrugInfo?: (drugName: string) => void;
 }
+
+const DURATION_PRESETS: { label: string; value: number | "ongoing" }[] = [
+  { label: "Ongoing", value: "ongoing" },
+  { label: "3 Days", value: 3 },
+  { label: "5 Days (Antibiotic)", value: 5 },
+  { label: "7 Days", value: 7 },
+  { label: "14 Days", value: 14 },
+  { label: "30 Days", value: 30 },
+];
 
 export default function MedicinesScreen({
   medications,
@@ -46,6 +57,12 @@ export default function MedicinesScreen({
   const [selectedFrequency, setSelectedFrequency] = useState<Frequency>("daily");
   const [customTimeInput, setCustomTimeInput] = useState("11:01");
 
+  // Course Duration State
+  const [formDurationDays, setFormDurationDays] = useState<number | "ongoing">("ongoing");
+  const [isFormCustomDuration, setIsFormCustomDuration] = useState(false);
+  const [formCustomDays, setFormCustomDays] = useState("10");
+  const [formStartDate, setFormStartDate] = useState(() => new Date().toISOString().split("T")[0]);
+
   const resetForm = () => {
     setFormName("");
     setFormDose("1 tablet");
@@ -53,7 +70,19 @@ export default function MedicinesScreen({
     setSelectedPattern("morning");
     setSelectedFrequency("daily");
     setCustomTimeInput("11:01");
+    setFormDurationDays("ongoing");
+    setIsFormCustomDuration(false);
+    setFormCustomDays("10");
+    setFormStartDate(new Date().toISOString().split("T")[0]);
   };
+
+  const effectiveFormDuration: number | "ongoing" = isFormCustomDuration
+    ? parseInt(formCustomDays, 10) > 0
+      ? parseInt(formCustomDays, 10)
+      : "ongoing"
+    : formDurationDays;
+
+  const formCalculatedEndDate = calculateEndDate(formStartDate, effectiveFormDuration);
 
   const handleAddCustomTime = (timeToAdd: string) => {
     if (!timeToAdd) return;
@@ -77,6 +106,9 @@ export default function MedicinesScreen({
       frequency: selectedFrequency,
       dosingPattern: selectedPattern,
       times: selectedTimes.length > 0 ? selectedTimes : ["08:00"],
+      durationDays: effectiveFormDuration,
+      startDate: formStartDate,
+      endDate: formCalculatedEndDate,
     });
 
     resetForm();
@@ -100,6 +132,7 @@ export default function MedicinesScreen({
     const regionalInfo =
       resolved.details ||
       INDIAN_DRUG_DETAILS[selectedMed.name.toLowerCase().trim()];
+    const course = getCourseProgress(selectedMed);
 
     return (
       <main className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6 animate-fade-in">
@@ -117,9 +150,29 @@ export default function MedicinesScreen({
         <section className="bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-7 shadow-xs flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-                {selectedMed.name}
-              </h1>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                  {selectedMed.name}
+                </h1>
+                {/* Course Duration Badge */}
+                {course.isOngoing ? (
+                  <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full text-xs font-bold border border-slate-200">
+                    🔄 Ongoing
+                  </span>
+                ) : course.isCompleted ? (
+                  <span className="bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                    ✓ Completed ({course.totalDays}d)
+                  </span>
+                ) : course.isActive ? (
+                  <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                    📅 Day {course.currentDay} of {course.totalDays}
+                  </span>
+                ) : (
+                  <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                    ⏳ {course.badgeText}
+                  </span>
+                )}
+              </div>
               <p className="text-base text-slate-600 font-medium">
                 {selectedMed.dose} ·{" "}
                 {selectedMed.times.map((tm) => formatTime12h(tm)).join(", ")}
@@ -131,6 +184,64 @@ export default function MedicinesScreen({
               timingCondition={selectedMed.timingCondition}
               size="lg"
             />
+          </div>
+
+          {/* Course Timeline Details Box */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 sm:p-5 flex flex-col gap-3">
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className="text-slate-700 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-emerald-600 text-[18px]">event_available</span>
+                <span>Course Schedule & Duration</span>
+              </span>
+              <span className={course.isCompleted ? "text-amber-800" : "text-emerald-700"}>
+                {course.label}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="bg-white rounded-lg p-2.5 border border-slate-200/80">
+                <span className="text-slate-400 block text-[11px]">Start Date</span>
+                <span className="font-bold text-slate-800">{selectedMed.startDate || "Today"}</span>
+              </div>
+              <div className="bg-white rounded-lg p-2.5 border border-slate-200/80">
+                <span className="text-slate-400 block text-[11px]">End Date</span>
+                <span className="font-bold text-slate-800">
+                  {course.isOngoing ? "Ongoing (No end)" : selectedMed.endDate || "—"}
+                </span>
+              </div>
+              <div className="bg-white rounded-lg p-2.5 border border-slate-200/80">
+                <span className="text-slate-400 block text-[11px]">Course Type</span>
+                <span className="font-bold text-slate-800">
+                  {course.isOngoing ? "Chronic Maintenance" : `${course.totalDays} Days Fixed`}
+                </span>
+              </div>
+              <div className="bg-white rounded-lg p-2.5 border border-slate-200/80">
+                <span className="text-slate-400 block text-[11px]">Progress</span>
+                <span className="font-bold text-emerald-700">
+                  {course.isOngoing
+                    ? "Continuous"
+                    : course.isCompleted
+                    ? "100% Completed"
+                    : `${course.remainingDays} days left`}
+                </span>
+              </div>
+            </div>
+
+            {/* Course Progress Bar (if fixed course) */}
+            {!course.isOngoing && !course.isFuture && (
+              <div className="flex flex-col gap-1.5 pt-1">
+                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      course.isCompleted ? "bg-amber-500" : "bg-emerald-600"
+                    }`}
+                    style={{
+                      width: `${Math.min(100, Math.round((course.currentDay / course.totalDays) * 100))}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Pill Visual Recognition Box */}
@@ -253,7 +364,7 @@ export default function MedicinesScreen({
             {t.addAMedicine || "Add Medication"}
           </h1>
           <p className="text-sm text-slate-500 font-medium mt-1">
-            {t.tellUsAboutMedicine || "Specify medicine name, dosage, and daily schedule."}
+            {t.tellUsAboutMedicine || "Specify medicine name, dosage, daily schedule & course duration."}
           </p>
         </div>
 
@@ -349,7 +460,7 @@ export default function MedicinesScreen({
               })}
             </div>
 
-            {/* ── Custom Exact Time Picker ── */}
+            {/* Custom Exact Time Picker */}
             <div className="pt-3 border-t border-slate-100 flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
                 <label htmlFor="custom-exact-time-input" className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
@@ -433,6 +544,108 @@ export default function MedicinesScreen({
                     )}
                   </span>
                 ))}
+              </div>
+            </div>
+          </section>
+
+          {/* Question 4: Course Duration & Start Date */}
+          <section className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <label className="text-base font-bold text-slate-900 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-emerald-600 text-[20px]">calendar_month</span>
+                <span>{language === "te" ? "కోర్సు వ్యవధి (Duration):" : "Course Duration"}</span>
+              </label>
+              <span className="text-xs text-slate-400 font-medium">
+                {effectiveFormDuration === "ongoing" ? "Chronic / Maintenance" : `${effectiveFormDuration} days`}
+              </span>
+            </div>
+
+            {/* Duration Presets */}
+            <div className="flex flex-wrap gap-2">
+              {DURATION_PRESETS.map((preset) => {
+                const isSelected = !isFormCustomDuration && formDurationDays === preset.value;
+                return (
+                  <button
+                    key={String(preset.value)}
+                    type="button"
+                    onClick={() => {
+                      setIsFormCustomDuration(false);
+                      setFormDurationDays(preset.value);
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setIsFormCustomDuration(true)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isFormCustomDuration
+                    ? "bg-emerald-600 text-white shadow-2xs"
+                    : "bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                {language === "te" ? "ఇతర రోజులు" : "Custom Days"}
+              </button>
+            </div>
+
+            {/* Custom Days Input */}
+            {isFormCustomDuration && (
+              <div className="flex items-center gap-2 pt-1 animate-fade-in">
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={formCustomDays}
+                  onChange={(e) => setFormCustomDays(e.target.value)}
+                  placeholder="e.g. 10"
+                  className="w-28 px-3 py-2 text-sm font-bold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                />
+                <span className="text-xs text-slate-500 font-medium">
+                  {language === "te" ? "రోజుల కోర్సు" : "days course"}
+                </span>
+              </div>
+            )}
+
+            {/* Start Date & Timeline Preview */}
+            <div className="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">
+                  {language === "te" ? "ప్రారంభ తేదీ (Start Date):" : "Course Start Date"}
+                </label>
+                <input
+                  type="date"
+                  value={formStartDate}
+                  onChange={(e) => setFormStartDate(e.target.value)}
+                  className="w-full px-3.5 py-2 text-sm font-semibold text-slate-900 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all cursor-pointer"
+                />
+              </div>
+
+              {/* End Date Preview Badge */}
+              <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 flex flex-col justify-center">
+                <span className="text-[11px] font-semibold text-slate-400">
+                  {language === "te" ? "కోర్సు వ్యవధి వివరాలు:" : "Course Timeline Preview:"}
+                </span>
+                {effectiveFormDuration === "ongoing" ? (
+                  <span className="text-xs font-bold text-emerald-800 flex items-center gap-1.5 mt-0.5">
+                    <span>🔄 Ongoing Course</span>
+                    <span className="text-slate-400 font-normal">(Chronic maintenance)</span>
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap mt-0.5">
+                    <span>📅 Ends: {formCalculatedEndDate || "—"}</span>
+                    <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md text-[11px]">
+                      {effectiveFormDuration} days total
+                    </span>
+                  </span>
+                )}
               </div>
             </div>
           </section>
@@ -569,6 +782,8 @@ export default function MedicinesScreen({
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {medications.map((med) => {
             const hasConflict = conflictingIds.has(med.id);
+            const course = getCourseProgress(med);
+
             return (
               <article
                 key={med.id}
@@ -602,13 +817,54 @@ export default function MedicinesScreen({
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5">
+                  {/* Course Duration Badge & Times */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Course Badge */}
+                    {course.isOngoing ? (
+                      <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md text-xs font-semibold">
+                        🔄 Ongoing
+                      </span>
+                    ) : course.isCompleted ? (
+                      <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-md text-xs font-bold">
+                        ✓ {course.badgeText}
+                      </span>
+                    ) : course.isActive ? (
+                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-md text-xs font-bold">
+                        📅 {course.badgeText}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-md text-xs font-medium">
+                        ⏳ {course.badgeText}
+                      </span>
+                    )}
+
+                    {/* Scheduled Times */}
                     {med.times.map((time) => (
                       <span key={time} className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-xs font-semibold">
                         ⏰ {formatTime12h(time)}
                       </span>
                     ))}
                   </div>
+
+                  {/* Progress Bar for Active / Completed Fixed Courses */}
+                  {!course.isOngoing && !course.isFuture && (
+                    <div className="flex flex-col gap-1 pt-1">
+                      <div className="flex justify-between items-center text-[11px] font-semibold text-slate-500">
+                        <span>{course.label}</span>
+                        <span>{Math.round((course.currentDay / course.totalDays) * 100)}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            course.isCompleted ? "bg-amber-500" : "bg-emerald-600"
+                          }`}
+                          style={{
+                            width: `${Math.min(100, Math.round((course.currentDay / course.totalDays) * 100))}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Actions (Details / Explainer / Delete) */}
